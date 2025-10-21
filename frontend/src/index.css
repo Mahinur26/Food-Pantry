@@ -1,0 +1,4 @@
+/*imports all tailwind styles, ignore the VSCode error*/
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
