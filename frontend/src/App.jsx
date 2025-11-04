@@ -117,7 +117,7 @@ function App() {
       //Login/Sign in page, uses google AuthO
       <div className="min-h-screen bg-green-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-lg shadow p-8 w-full max-w-md">
-          <h1 className="text-3xl font-bold text-green-700 mb-6 text-center">Bomboclat Pantry</h1>
+          <h1 className="text-3xl font-bold text-green-700 mb-6 text-center">Food Pantry</h1>
           <div className="space-y-4">
             <input
               type="email"
@@ -160,7 +160,7 @@ function App() {
     <div className="min-h-screen bg-green-50">
       <div className="bg-white shadow mb-4">
         <div className="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-green-700">Bomboclat Pantry</h1>
+          <h1 className="text-2xl font-bold text-green-700">Food Pantry</h1>
           <div className="flex gap-4 items-center">
             <span className="text-sm text-gray-600">{user.email}</span>
             <button
