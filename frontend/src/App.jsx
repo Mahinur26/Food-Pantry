@@ -89,6 +89,23 @@ function App() {
     setLoading(false);
   };
 
+  //Deletes an item from the inventory by sending a POST request to the backend and updating the UI
+  const deleteItem = async (itemId) => {
+    if (!confirm('Are you sure you want to delete this item?')) return;
+    setLoading(true);
+    try {
+      await fetch(`${API_URL}/inventory/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_id: itemId })
+      });
+      fetchInventory(); // Refresh the inventory list
+    } catch (err) {
+      alert('Error deleting item');
+    }
+    setLoading(false);
+  };
+
   //Used to send the user's message to the ai model in the backend and return the response in the chat UI
   const sendMessage = async () => {
     if (!chatInput.trim()) return;
@@ -234,14 +251,37 @@ function App() {
               ) : (
                 <div className="space-y-2">
                   {inventory.map((item) => (
-                    <div key={item.id} className="p-3 bg-green-50 rounded border">
-                      <div className="font-semibold">{item.name}</div>
-                      <div className="text-sm text-gray-600">Qty: {item.quantity}</div>
-                      {item.expiration_date && (
-                        <div className="text-sm text-gray-600">
-                          Expires: {new Date(item.expiration_date).toLocaleDateString()}
-                        </div>
-                      )}
+                    <div key={item.id} className="p-3 bg-green-50 rounded border flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="font-semibold">{item.name}</div>
+                        <div className="text-sm text-gray-600">Qty: {item.quantity}</div>
+                        {item.expiration_date && (
+                          <div className="text-sm text-gray-600">
+                            Expires: {new Date(item.expiration_date).toLocaleDateString()}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => deleteItem(item.id)}
+                        disabled={loading}
+                        className="ml-4 mt-3 p-2 hover:bg-red-100 rounded transition-colors disabled:opacity-50"
+                        title="Delete item"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-5 w-5 text-red-600"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={2}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                          />
+                        </svg>
+                      </button>
                     </div>
                   ))}
                 </div>

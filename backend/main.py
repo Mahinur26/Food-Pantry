@@ -72,6 +72,9 @@ class ChatRequest(BaseModel):
     user_id: str
     message: str
 
+class DeleteItemRequest(BaseModel):
+    item_id: str
+
 
 # Auth Endpoints - Used for signing up and logging in users
 #The @app.post here responds to POST requests from "/auth/signup" in this case (getting data from the frontend)
@@ -120,6 +123,15 @@ async def add_inventory(item: InventoryItem):
         "created_at": datetime.now()
     })
     return {"id": doc_ref.id, "message": "Item added"}
+
+@app.post("/inventory/delete")
+async def delete_inventory(req: DeleteItemRequest):
+    try:
+        #Permanently deletes the inventory item from Firestore using its document ID
+        db.collection("inventory").document(req.item_id).delete()
+        return {"message": "Item deleted successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error deleting item: {str(e)}")
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
