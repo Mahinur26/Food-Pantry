@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -10,6 +10,10 @@ from datetime import datetime
 import os
 from dotenv import load_dotenv
 from google.oauth2 import service_account
+
+from ultralytics import YOLO
+from PIL import Image
+import io
 
 # Load environment variables
 load_dotenv()
@@ -56,6 +60,35 @@ vertexai.init(
 )
 model = GenerativeModel(MODEL_NAME)
 
+#Loads the grocery classification model at startup - uses images to classify mostly fruits and veggies atm
+grocery_model = None
+
+@app.on_event("startup")
+async def load_grocery_model():
+    """Load the grocery classification model when server starts"""
+    global grocery_model
+    try:
+        # Make sure best.pt is in the same directory as your backend
+        model_path = 'best.pt'
+        print(f"🔄 Loading grocery classification model from {model_path}...")
+        grocery_model = YOLO(model_path)
+        print("✅ Grocery classification model loaded successfully")
+        print(f"   Can recognize {len(grocery_model.names)} items")
+        print(f"   Model type: {type(grocery_model).__name__}")
+        # Print first few class names as verification
+        if grocery_model.names:
+            sample_classes = list(grocery_model.names.values())[:5]
+            print(f"   Sample classes: {', '.join(sample_classes)}...")
+    except FileNotFoundError:
+        print(f"⚠️  Warning: Model file 'best.pt' not found in backend directory")
+        print("   Image classification will not be available")
+        grocery_model = None
+    except Exception as e:
+        print(f"⚠️  Warning: Could not load grocery model: {e}")
+        print(f"   Error type: {type(e).__name__}")
+        print("   Image classification will not be available")
+        grocery_model = None
+    
 # The 3 models use pydantic to validate data requests for each endpoint
 #FastAPI is used to automatically checks data requests and matches it to the right model
 class AuthRequest(BaseModel):
@@ -74,6 +107,139 @@ class ChatRequest(BaseModel):
 
 class DeleteItemRequest(BaseModel):
     item_id: str
+
+# Model for adding item with image
+class ClassifyAndAddRequest(BaseModel):
+    user_id: str
+    quantity: int = 1
+    expiration_date: Optional[str] = None
+
+# NEW ENDPOINTS FOR GROCERY CLASSIFICATION
+@app.post("/classify/image")
+async def classify_grocery_image(file: UploadFile = File(...)):
+    """
+    Classify a grocery item from an uploaded image
+    Returns the predicted item name and confidence
+    """
+    if not grocery_model:
+        raise HTTPException(status_code=503, detail="Grocery classification model not available")
+    
+    # Validate file type
+    if not file.content_type.startswith('image/'):
+        raise HTTPException(status_code=400, detail="File must be an image")
+    
+    try:
+        # Read and classify image
+        contents = await file.read()
+        image = Image.open(io.BytesIO(contents))
+        
+        # Run inference with the YOLO model
+        results = grocery_model(image, verbose=False)
+        result = results[0]
+        
+        # Verify the model returned classification results
+        if not hasattr(result, 'probs') or not hasattr(result, 'names'):
+            raise ValueError("Model did not return classification results. Make sure best.pt is a classification model.")
+        
+        # Get top 3 predictions (matching reference implementation structure)
+        top3 = []
+        for idx in result.probs.top5[:3]:
+            top3.append({
+                "name": result.names[idx],
+                "confidence": float(result.probs.data[idx].item()) if hasattr(result.probs.data[idx], 'item') else float(result.probs.data[idx])
+            })
+        
+        predicted_item = result.names[result.probs.top1]
+        confidence = float(result.probs.top1conf.item()) if hasattr(result.probs.top1conf, 'item') else float(result.probs.top1conf)
+        
+        print(f"✅ Classification result: {predicted_item} (confidence: {confidence:.2%})")
+        
+        return {
+            "success": True,
+            "predicted_item": predicted_item,
+            "confidence": confidence,
+            "alternatives": top3
+        }
+    
+    except Exception as e:
+        print(f"❌ Classification error: {str(e)}")
+        print(f"   Error type: {type(e)}")
+        raise HTTPException(status_code=500, detail=f"Classification failed: {str(e)}")
+
+
+@app.post("/inventory/add-from-image")
+async def add_inventory_from_image(
+    file: UploadFile = File(...),
+    user_id: str = Form(...),
+    quantity: int = Form(1),
+    expiration_date: Optional[str] = Form(None)
+):
+    """
+    Classify a grocery image AND automatically add it to inventory
+    This is the magic endpoint that combines classification + inventory addition!
+    """
+    if not grocery_model:
+        raise HTTPException(status_code=503, detail="Grocery classification model not available")
+    
+    try:
+        # Validate inputs
+        if not user_id or user_id.strip() == "":
+            raise HTTPException(status_code=400, detail="user_id is required")
+        
+        # Ensure quantity is an integer
+        try:
+            quantity_int = int(quantity)
+            if quantity_int < 1:
+                raise ValueError("Quantity must be at least 1")
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Quantity must be a valid positive integer")
+        
+        # Normalize expiration_date (empty string becomes None to match regular add behavior)
+        expiration_date_normalized = expiration_date if expiration_date and expiration_date.strip() else None
+        
+        # 1. Classify the image
+        contents = await file.read()
+        image = Image.open(io.BytesIO(contents))
+        
+        # Run inference with the YOLO model
+        results = grocery_model(image, verbose=False)
+        result = results[0]
+        
+        # Verify the model returned classification results
+        if not hasattr(result, 'probs') or not hasattr(result, 'names'):
+            raise ValueError("Model did not return classification results. Make sure best.pt is a classification model.")
+        
+        predicted_name = result.names[result.probs.top1]
+        confidence = float(result.probs.top1conf.item()) if hasattr(result.probs.top1conf, 'item') else float(result.probs.top1conf)
+        
+        print(f"✅ Classification result: {predicted_name} (confidence: {confidence:.2%})")
+        
+        # 2. Add to inventory (matching the structure from regular add_inventory endpoint)
+        doc_ref = db.collection("inventory").document()
+        doc_ref.set({
+            "user_id": user_id,
+            "name": predicted_name,
+            "quantity": quantity_int,
+            "expiration_date": expiration_date_normalized,
+            "created_at": datetime.now(),
+            "added_by": "image_classification",
+            "confidence": confidence
+        })
+        
+        print(f"✅ Added {predicted_name} to inventory for user {user_id}")
+        
+        return {
+            "success": True,
+            "item_id": doc_ref.id,
+            "item_name": predicted_name,
+            "confidence": confidence,
+            "message": f"Added {predicted_name} to inventory"
+        }
+    
+    except Exception as e:
+        print(f"❌ Error adding item from image: {str(e)}")
+        print(f"   Error type: {type(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to add item: {str(e)}")
 
 
 # Auth Endpoints - Used for signing up and logging in users

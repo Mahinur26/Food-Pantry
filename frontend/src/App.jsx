@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 const API_URL = 'http://localhost:8000';
 
@@ -18,6 +18,16 @@ function App() {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [loading, setLoading] = useState(false);
+  
+  // Scan groceries state
+  const [scanningMode, setScanningMode] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [predictedItem, setPredictedItem] = useState(null);
+  const [scanQuantity, setScanQuantity] = useState('1');
+  const [scanExpiration, setScanExpiration] = useState('');
+  const [scanning, setScanning] = useState(false);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     const stored = localStorage.getItem('bullavor_user');
@@ -28,6 +38,15 @@ function App() {
     //fetch inventory when user logs in
     if (user) fetchInventory();
   }, [user]);
+
+  // Cleanup image preview URL on unmount or when closing scan mode
+  useEffect(() => {
+    return () => {
+      if (imagePreview) {
+        URL.revokeObjectURL(imagePreview);
+      }
+    };
+  }, [imagePreview]);
 
   //Sends a POST request to the backend to either log in or sign up the user based on the isLogin state
   //A POST request means sending data from the frontend to the backend for processing, in this case for logging/signing in
@@ -128,6 +147,123 @@ function App() {
     }
     setLoading(false);
   };
+
+  //Handle image selection from file input (works for both camera capture and file upload)
+  const handleImageSelect = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    // Create preview URL
+    const previewUrl = URL.createObjectURL(file);
+    setSelectedImage(file);
+    setImagePreview(previewUrl);
+    setPredictedItem(null); // Clear previous prediction
+    
+    // Auto-trigger classification
+    await classifyImage(file);
+  };
+
+  //Classify the selected image using the backend YOLO model
+  const classifyImage = async (imageFile) => {
+    setScanning(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', imageFile);
+      
+      const res = await fetch(`${API_URL}/classify/image`, {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.detail || 'Classification failed');
+      }
+      
+      const data = await res.json();
+      setPredictedItem({
+        name: data.predicted_item,
+        confidence: data.confidence
+      });
+    } catch (err) {
+      alert('Error classifying image: ' + err.message);
+      setPredictedItem(null);
+    }
+    setScanning(false);
+  };
+
+  //Add item to inventory from scanned image
+  const addItemFromScan = async () => {
+    if (!selectedImage || !predictedItem) {
+      alert('Please select and classify an image first');
+      return;
+    }
+    if (!scanQuantity || parseInt(scanQuantity) < 1) {
+      alert('Please enter a valid quantity (at least 1)');
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedImage);
+      formData.append('user_id', user.uid);
+      formData.append('quantity', scanQuantity.toString()); // Ensure it's a string for FormData
+      if (scanExpiration && scanExpiration.trim()) {
+        formData.append('expiration_date', scanExpiration);
+      }
+      
+      const res = await fetch(`${API_URL}/inventory/add-from-image`, {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.detail || 'Failed to add item');
+      }
+      
+      const responseData = await res.json();
+      
+      // Reset scan UI
+      if (imagePreview) {
+        URL.revokeObjectURL(imagePreview);
+      }
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      setSelectedImage(null);
+      setImagePreview(null);
+      setPredictedItem(null);
+      setScanQuantity('1');
+      setScanExpiration('');
+      setScanningMode(false);
+      
+      // Refresh inventory
+      await fetchInventory();
+      
+      alert(`Item added successfully! Added ${responseData.item_name} to inventory.`);
+    } catch (err) {
+      alert('Error adding item: ' + err.message);
+    }
+    setLoading(false);
+  };
+
+  //Reset scan UI when closing
+  const resetScanUI = () => {
+    if (imagePreview) {
+      URL.revokeObjectURL(imagePreview);
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    setScanningMode(false);
+    setSelectedImage(null);
+    setImagePreview(null);
+    setPredictedItem(null);
+    setScanQuantity('1');
+    setScanExpiration('');
+  };
 //The main return statement that renders the UI based on whether the user is logged in or not
   if (!user) {
     return (
@@ -212,7 +348,15 @@ function App() {
         {activeTab === 'inventory' && (
           <div className="space-y-4">
             <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-bold mb-4">Add Item</h2>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold">Add Item</h2>
+                <button
+                  onClick={() => setScanningMode(true)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                >
+                  Scan Groceries
+                </button>
+              </div>
               <div className="space-y-3">
                 <input
                   type="text"
@@ -243,6 +387,97 @@ function App() {
                 </button>
               </div>
             </div>
+{/* Scan Groceries UI */}
+            {scanningMode && (
+              <div className="bg-white rounded-lg shadow p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-bold">Scan Groceries</h2>
+                  <button
+                    onClick={resetScanUI}
+                    className="text-gray-600 hover:text-gray-800"
+                  >
+                    ✕
+                  </button>
+                </div>
+                
+                <div className="space-y-4">
+                  {/* File input with capture attribute */}
+                  <div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture
+                      onChange={handleImageSelect}
+                      className="hidden"
+                      ref={fileInputRef}
+                    />
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full px-4 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                    >
+                      {selectedImage ? 'Select Different Image' : 'Take Photo / Choose Image'}
+                    </button>
+                  </div>
+                  
+                  {/* Image preview */}
+                  {imagePreview && (
+                    <div className="flex justify-center">
+                      <img
+                        src={imagePreview}
+                        alt="Preview"
+                        className="max-w-full h-64 object-contain rounded border"
+                      />
+                    </div>
+                  )}
+                  
+                  {/* Classification result */}
+                  {scanning && (
+                    <div className="text-center text-gray-600">
+                      Analyzing image...
+                    </div>
+                  )}
+                  
+                  {predictedItem && !scanning && (
+                    <div className="p-4 bg-green-50 rounded border">
+                      <div className="font-semibold text-green-800">
+                        {predictedItem.name}
+                      </div>
+                      <div className="text-sm text-green-600">
+                        Confidence: {(predictedItem.confidence * 100).toFixed(1)}%
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Quantity and expiration inputs */}
+                  {predictedItem && (
+                    <>
+                      <input
+                        type="number"
+                        placeholder="Quantity"
+                        value={scanQuantity}
+                        onChange={(e) => setScanQuantity(e.target.value)}
+                        min="1"
+                        className="w-full px-3 py-2 border rounded"
+                      />
+                      <input
+                        type="date"
+                        placeholder="Expiration date (optional)"
+                        value={scanExpiration}
+                        onChange={(e) => setScanExpiration(e.target.value)}
+                        className="w-full px-3 py-2 border rounded"
+                      />
+                      <button
+                        onClick={addItemFromScan}
+                        disabled={loading || scanning}
+                        className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 disabled:opacity-50"
+                      >
+                        {loading ? 'Adding...' : 'Add to Inventory'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
 {/* Shows the items in your inventory*/}
             <div className="bg-white rounded-lg shadow p-6">
               <h2 className="text-xl font-bold mb-4">Your Items</h2>
