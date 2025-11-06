@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Snackbar, Alert } from '@mui/material';
 
 const API_URL = 'http://localhost:8000';
 
@@ -14,6 +15,10 @@ function App() {
   const [itemName, setItemName] = useState('');
   const [itemQuantity, setItemQuantity] = useState('');
   const [itemExpiration, setItemExpiration] = useState('');
+
+  // Notification state
+  const [notification, setNotification] = useState(''); // The message to show
+  const [open, setOpen] = useState(false); // Whether the notification is visible
   
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
@@ -82,6 +87,23 @@ function App() {
       console.error(err);
     }
   };
+
+  useEffect(() => {
+  if (inventory.length === 0) return;
+
+  const today = new Date();
+  const expiringSoon = inventory.filter((item) => {
+    if (!item.expiration_date) return false;
+    const expDate = new Date(item.expiration_date);
+    const diffDays = (expDate - today) / (1000 * 60 * 60 * 24);
+    return diffDays <= 3 && diffDays >= 0; // expires in 3 days or less
+  });
+
+  if (expiringSoon.length > 0) {
+    setNotification(`⚠️ Heads up! These items are expiring soon: ${expiringSoon.map(i => i.name).join(", ")}`);
+    setOpen(true);
+  }
+  }, [inventory]);
 
   //Sends the new item data to the backend, then refreshes the inventory list to show the new item
   const addItem = async () => {
@@ -344,7 +366,18 @@ function App() {
             Recipe Chat
           </button>
         </div>
-{/* Used to add items to the inventory*/}
+        {/* Step 4: Notification goes here */}
+        <Snackbar
+          open={open}
+          autoHideDuration={6000}
+          onClose={() => setOpen(false)}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        >
+          <Alert onClose={() => setNotification('')} severity="warning" sx={{ width: '100%', fontSize: 18 , color: 'red', backgroundColor: '#FAFAD2', border: '2px solid #FFA500' }}>
+            {notification}
+          </Alert>
+        </Snackbar>      
+        {/* Used to add items to the inventory*/}
         {activeTab === 'inventory' && (
           <div className="space-y-4">
             <div className="bg-white rounded-lg shadow p-6">
