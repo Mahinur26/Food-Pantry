@@ -11,7 +11,10 @@ import os
 from dotenv import load_dotenv
 from google.oauth2 import service_account
 
-from ultralytics import YOLO
+from transformers import AutoModelForImageClassification
+import torch
+import torch.nn.functional as F
+from torchvision import transforms
 from PIL import Image
 import io
 
@@ -62,32 +65,45 @@ model = GenerativeModel(MODEL_NAME)
 
 #Loads the grocery classification model at startup - uses images to classify mostly fruits and veggies atm
 grocery_model = None
+preprocess_transform = None
 
 @app.on_event("startup")
 async def load_grocery_model():
     """Load the grocery classification model when server starts"""
-    global grocery_model
+    global grocery_model, preprocess_transform
     try:
-        # Make sure best.pt is in the same directory as your backend
-        model_path = 'best.pt'
-        print(f"🔄 Loading grocery classification model from {model_path}...")
-        grocery_model = YOLO(model_path)
+        model_name = "jazzmacedo/fruits-and-vegetables-detector-36"
+        print(f"🔄 Loading grocery classification model from Hugging Face: {model_name}...")
+        print("   (First run will download ~23.6MB model, this may take a moment...)")
+        
+        # Load the model from Hugging Face
+        grocery_model = AutoModelForImageClassification.from_pretrained(model_name)
+        grocery_model.eval()  # Set to evaluation mode
+        
+        # Create preprocessing pipeline matching ImageNet normalization
+        preprocess_transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+        
+        # Extract labels from model config
+        labels = list(grocery_model.config.id2label.values())
+        
         print("✅ Grocery classification model loaded successfully")
-        print(f"   Can recognize {len(grocery_model.names)} items")
+        print(f"   Can recognize {len(labels)} items")
         print(f"   Model type: {type(grocery_model).__name__}")
         # Print first few class names as verification
-        if grocery_model.names:
-            sample_classes = list(grocery_model.names.values())[:5]
+        if labels:
+            sample_classes = labels[:5]
             print(f"   Sample classes: {', '.join(sample_classes)}...")
-    except FileNotFoundError:
-        print(f"⚠️  Warning: Model file 'best.pt' not found in backend directory")
-        print("   Image classification will not be available")
-        grocery_model = None
     except Exception as e:
         print(f"⚠️  Warning: Could not load grocery model: {e}")
         print(f"   Error type: {type(e).__name__}")
         print("   Image classification will not be available")
+        print("   Note: Model requires internet connection for first download")
         grocery_model = None
+        preprocess_transform = None
     
 # The 3 models use pydantic to validate data requests for each endpoint
 #FastAPI is used to automatically checks data requests and matches it to the right model
@@ -121,7 +137,7 @@ async def classify_grocery_image(file: UploadFile = File(...)):
     Classify a grocery item from an uploaded image
     Returns the predicted item name and confidence
     """
-    if not grocery_model:
+    if not grocery_model or not preprocess_transform:
         raise HTTPException(status_code=503, detail="Grocery classification model not available")
     
     # Validate file type
@@ -129,28 +145,38 @@ async def classify_grocery_image(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="File must be an image")
     
     try:
-        # Read and classify image
+        # Read and preprocess image
         contents = await file.read()
         image = Image.open(io.BytesIO(contents))
         
-        # Run inference with the YOLO model
-        results = grocery_model(image, verbose=False)
-        result = results[0]
+        # Convert to RGB if necessary (handles RGBA, L, etc.)
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
         
-        # Verify the model returned classification results
-        if not hasattr(result, 'probs') or not hasattr(result, 'names'):
-            raise ValueError("Model did not return classification results. Make sure best.pt is a classification model.")
+        # Preprocess image for ResNet-50
+        input_tensor = preprocess_transform(image).unsqueeze(0)  # Add batch dimension
         
-        # Get top 3 predictions (matching reference implementation structure)
+        # Run inference with the transformers model
+        with torch.no_grad():
+            outputs = grocery_model(input_tensor)
+        
+        # Apply softmax to get probabilities
+        probs = F.softmax(outputs.logits, dim=1)
+        
+        # Get top prediction
+        predicted_idx = torch.argmax(probs, dim=1).item()
+        predicted_item = grocery_model.config.id2label[predicted_idx]
+        confidence = float(probs[0][predicted_idx].item())
+        
+        # Get top 3 predictions for alternatives
+        top3_indices = torch.topk(probs, k=3, dim=1).indices[0]
         top3 = []
-        for idx in result.probs.top5[:3]:
+        for idx in top3_indices:
+            idx_item = idx.item()
             top3.append({
-                "name": result.names[idx],
-                "confidence": float(result.probs.data[idx].item()) if hasattr(result.probs.data[idx], 'item') else float(result.probs.data[idx])
+                "name": grocery_model.config.id2label[idx_item],
+                "confidence": float(probs[0][idx_item].item())
             })
-        
-        predicted_item = result.names[result.probs.top1]
-        confidence = float(result.probs.top1conf.item()) if hasattr(result.probs.top1conf, 'item') else float(result.probs.top1conf)
         
         print(f"✅ Classification result: {predicted_item} (confidence: {confidence:.2%})")
         
@@ -178,7 +204,7 @@ async def add_inventory_from_image(
     Classify a grocery image AND automatically add it to inventory
     This is the magic endpoint that combines classification + inventory addition!
     """
-    if not grocery_model:
+    if not grocery_model or not preprocess_transform:
         raise HTTPException(status_code=503, detail="Grocery classification model not available")
     
     try:
@@ -201,16 +227,24 @@ async def add_inventory_from_image(
         contents = await file.read()
         image = Image.open(io.BytesIO(contents))
         
-        # Run inference with the YOLO model
-        results = grocery_model(image, verbose=False)
-        result = results[0]
+        # Convert to RGB if necessary
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
         
-        # Verify the model returned classification results
-        if not hasattr(result, 'probs') or not hasattr(result, 'names'):
-            raise ValueError("Model did not return classification results. Make sure best.pt is a classification model.")
+        # Preprocess image for ResNet-50
+        input_tensor = preprocess_transform(image).unsqueeze(0)  # Add batch dimension
         
-        predicted_name = result.names[result.probs.top1]
-        confidence = float(result.probs.top1conf.item()) if hasattr(result.probs.top1conf, 'item') else float(result.probs.top1conf)
+        # Run inference with the transformers model
+        with torch.no_grad():
+            outputs = grocery_model(input_tensor)
+        
+        # Apply softmax to get probabilities
+        probs = F.softmax(outputs.logits, dim=1)
+        
+        # Get top prediction
+        predicted_idx = torch.argmax(probs, dim=1).item()
+        predicted_name = grocery_model.config.id2label[predicted_idx]
+        confidence = float(probs[0][predicted_idx].item())
         
         print(f"✅ Classification result: {predicted_name} (confidence: {confidence:.2%})")
         
