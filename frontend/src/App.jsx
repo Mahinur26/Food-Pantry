@@ -373,7 +373,7 @@ function App() {
           onClose={() => setOpen(false)}
           anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         >
-          <Alert onClose={() => setNotification('')} severity="warning" sx={{ width: '100%', fontSize: 18 , color: 'red', backgroundColor: '#FAFAD2', border: '2px solid #FFA500' }}>
+          <Alert onClose={() => setOpen(false)} severity="warning" sx={{ width: '100%', fontSize: 18 , color: 'red', backgroundColor: '#FAFAD2', border: '2px solid #FFA500' }}>
             {notification}
           </Alert>
         </Snackbar>      
