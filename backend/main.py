@@ -351,6 +351,9 @@ async def chat(req: ChatRequest):
         inventory_text = "\n".join(inventory) if inventory else "No items in inventory"
         #We will be prompting Vertex AI with this prompt to get recipe suggestions based on the user's inventory
         prompt = f"""You are a helpful cooking assistant. 
+        Do NOT use markdown, asterisks, or special symbols. Make your answers easy to read and chat-friendly.
+        Write steps clearly, using numbered sentences or paragraphs. Each step should start on a new line with its number.
+        Leave whitespace between paragraphs for readability.
         
 Current inventory:
 {inventory_text}
