@@ -376,7 +376,7 @@ return (
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
       >
         <Alert
-          onClose={() => setNotification('')}
+          onClose={() => setOpen(false)}
           severity="warning"
           sx={{ width: '100%', fontSize: 18, color: 'red', backgroundColor: '#FAFAD2', border: '2px solid #FFA500' }}
         >
