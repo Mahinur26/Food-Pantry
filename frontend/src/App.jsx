@@ -534,6 +534,19 @@ return (
                   onChange={(e) => setItemExpiration(e.target.value)}
                   className="w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500"
                 />
+                <select
+                  value={itemCategory}
+                  onChange={(e) => setItemCategory(e.target.value)}
+                  className="w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                >
+                  <option value="">Auto-detect category</option>
+                  <option value="Fruits">Fruits</option>
+                  <option value="Vegetables">Vegetables</option>
+                  <option value="Dairy">Dairy</option>
+                  <option value="Meat">Meat</option>
+                  <option value="Grains">Grains</option>
+                  <option value="Other">Other</option>
+                </select>
                 <button
                   onClick={addItem}
                   disabled={loading}
@@ -626,41 +639,79 @@ return (
               {inventory.length === 0 ? (
                 <p className="text-gray-500 text-center">No items yet</p>
               ) : (
-                <div className="grid grid-cols-1 gap-4">
-                  {inventory.map((item) => (
-                    <div key={item.id} className="p-4 bg-green-50 rounded-xl border flex justify-between items-start shadow-sm">
-                      <div className="flex-1">
-                        <div className="font-semibold">{item.name}</div>
-                        <div className="text-sm text-gray-600">Qty: {item.quantity}</div>
-                        {item.expiration_date && (
-                          <div className="text-sm text-gray-600">
-                            Expires: {new Date(item.expiration_date).toLocaleDateString()}
-                          </div>
-                        )}
+                <div className="space-y-6">
+                  {Object.entries(groupInventoryByCategory(inventory)).map(
+                    ([category, items]) => (
+                      <div key={category}>
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-lg font-semibold text-gray-800">
+                            {category} ({items.length})
+                          </h3>
+                        </div>
+                        <div className="grid grid-cols-1 gap-3">
+                          {items.map((item) => (
+                            <div
+                              key={item.id}
+                              className="p-4 bg-green-50 rounded-xl border flex justify-between items-start shadow-sm"
+                            >
+                              <div className="flex-1">
+                                <div className="font-semibold">{item.name}</div>
+                                <div className="text-sm text-gray-600">
+                                  Qty: {item.quantity}
+                                </div>
+                                {item.expiration_date && (
+                                  <div className="text-sm text-gray-600">
+                                    Expires:{" "}
+                                    {new Date(
+                                      item.expiration_date
+                                    ).toLocaleDateString()}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <select
+                                  value={item.category || "Other"}
+                                  onChange={(e) =>
+                                    updateCategory(item.id, e.target.value)
+                                  }
+                                  disabled={loading}
+                                  className="px-2 py-1 text-sm border rounded-lg bg-white disabled:opacity-50 hover:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
+                                >
+                                  <option value="Fruits">Fruits</option>
+                                  <option value="Vegetables">Vegetables</option>
+                                  <option value="Dairy">Dairy</option>
+                                  <option value="Meat">Meat</option>
+                                  <option value="Grains">Grains</option>
+                                  <option value="Other">Other</option>
+                                </select>
+                                <button
+                                  onClick={() => deleteItem(item.id)}
+                                  disabled={loading}
+                                  className="ml-2 p-2 hover:bg-red-100 rounded-xl transition-colors disabled:opacity-50"
+                                  title="Delete item"
+                                >
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-5 w-5 text-red-600"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    strokeWidth={2}
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                    />
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <button
-                        onClick={() => deleteItem(item.id)}
-                        disabled={loading}
-                        className="ml-4 mt-1 p-2 hover:bg-red-100 rounded-xl transition-colors disabled:opacity-50"
-                        title="Delete item"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-5 w-5 text-red-600"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth={2}
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                          />
-                        </svg>
-                      </button>
-                    </div>
-                  ))}
+                    )
+                  )}
                 </div>
               )}
             </div>
