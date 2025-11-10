@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Snackbar, Alert } from "@mui/material";
 
-
-const API_URL = "http://localhost:8000";
+//Chaged the api url to accept both the local host and deployed url
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 
 function App() {

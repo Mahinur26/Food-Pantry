@@ -33,7 +33,8 @@ PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT")
 LOCATION = os.getenv("VERTEX_AI_LOCATION")
 MODEL_NAME = os.getenv("VERTEX_AI_MODEL")
 FRONTEND_URL = os.getenv("FRONTEND_URL")
-BACKEND_PORT = int(os.getenv("BACKEND_PORT"))
+# Render provides PORT automatically, fallback to BACKEND_PORT or 8000
+PORT = int(os.getenv("PORT", os.getenv("BACKEND_PORT", "8000")))
 
 
 
@@ -48,7 +49,7 @@ app = FastAPI()
 # This block is in place to prevent other malicious domains from accessing your backend and taking precious data muhhaha
 app.add_middleware(
    CORSMiddleware,
-   allow_origins=[FRONTEND_URL],
+   allow_origins=[FRONTEND_URL] if FRONTEND_URL else ["*"],  # Allow all in dev, specific in prod
    allow_credentials=True,
    allow_methods=["*"],
    allow_headers=["*"],
@@ -56,16 +57,31 @@ app.add_middleware(
 
 
 # Initialize Firebase creds and gets a database client
-cred = credentials.Certificate(FIREBASE_CREDENTIALS_PATH)
+import json
+
+# Try to get credentials from JSON string first (for Render), then file path
+FIREBASE_CREDENTIALS_JSON = os.getenv("FIREBASE_CREDENTIALS_JSON")
+if FIREBASE_CREDENTIALS_JSON:
+    # Parse JSON string from environment variable
+    cred_dict = json.loads(FIREBASE_CREDENTIALS_JSON)
+    cred = credentials.Certificate(cred_dict)
+else:
+    # Fall back to file path (for local development)
+    cred = credentials.Certificate(FIREBASE_CREDENTIALS_PATH)
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
 
 # Initialize Vertex AI with explicit credentials
 # Reusing the Firebase service account for Vertix AI, just using one service account with both Firebase and Vertex AI enabled
-vertex_credentials = service_account.Credentials.from_service_account_file(
-   FIREBASE_CREDENTIALS_PATH
-)
+if FIREBASE_CREDENTIALS_JSON:
+    vertex_credentials = service_account.Credentials.from_service_account_info(
+        json.loads(FIREBASE_CREDENTIALS_JSON)
+    )
+else:
+    vertex_credentials = service_account.Credentials.from_service_account_file(
+        FIREBASE_CREDENTIALS_PATH
+    )
 vertexai.init(
    project=PROJECT_ID,
    location=LOCATION,
@@ -638,4 +654,4 @@ Provide helpful recipe suggestions based on their available ingredients. Priorit
 
 if __name__ == "__main__":
    import uvicorn
-   uvicorn.run(app, host="0.0.0.0", port=BACKEND_PORT)
+   uvicorn.run(app, host="0.0.0.0", port=PORT)
