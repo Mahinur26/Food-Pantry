@@ -5,7 +5,9 @@ google-cloud-aiplatform==1.70.0
 pydantic==2.5.0
 python-dotenv==1.0.0
 transformers>=4.30.0
-torch>=2.0.0
-torchvision>=0.15.0
+# CPU-only PyTorch (no CUDA dependencies, saves ~1GB+ memory)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.0.0+cpu
+torchvision==0.15.0+cpu
 pillow>=9.0.0
 python-multipart==0.0.20
