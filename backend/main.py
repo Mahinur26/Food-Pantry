@@ -48,22 +48,32 @@ app = FastAPI()
 # These requests are usually blocked by browsers for security reasons, but this overrides that
 # This block is in place to prevent other malicious domains from accessing your backend and taking precious data muhhaha
 
-# Handle CORS origins - support both single URL and wildcard
+# Handle CORS origins - when allow_credentials=True, cannot use wildcard "*"
+# Must specify exact origins
 if FRONTEND_URL and FRONTEND_URL.strip():
     # Production: allow specific frontend URL
     allowed_origins = [FRONTEND_URL.strip()]
+    use_credentials = True
 else:
-    # Development: allow all origins
+    # Development: allow all origins (but can't use credentials with wildcard)
     allowed_origins = ["*"]
+    use_credentials = False
 
 app.add_middleware(
    CORSMiddleware,
    allow_origins=allowed_origins,
-   allow_credentials=True,
-   allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+   allow_credentials=use_credentials,
+   allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
    allow_headers=["*"],
    expose_headers=["*"],
+   max_age=3600,  # Cache preflight for 1 hour
 )
+
+# Debug: Print CORS configuration on startup
+print(f"🔧 CORS Configuration:")
+print(f"   FRONTEND_URL: {FRONTEND_URL}")
+print(f"   Allowed Origins: {allowed_origins}")
+print(f"   Allow Credentials: {use_credentials}")
 
 
 # Initialize Firebase creds and gets a database client
