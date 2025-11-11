@@ -50,9 +50,12 @@ app = FastAPI()
 
 # Handle CORS origins - when allow_credentials=True, cannot use wildcard "*"
 # Must specify exact origins
+# Strip trailing slashes to match browser origin format
 if FRONTEND_URL and FRONTEND_URL.strip():
-    # Production: allow specific frontend URL
-    allowed_origins = [FRONTEND_URL.strip()]
+    # Production: allow specific frontend URL (remove trailing slash)
+    frontend_url_clean = FRONTEND_URL.strip().rstrip('/')
+    # Allow both with and without trailing slash to be safe
+    allowed_origins = [frontend_url_clean, f"{frontend_url_clean}/"]
     use_credentials = True
 else:
     # Development: allow all origins (but can't use credentials with wildcard)
