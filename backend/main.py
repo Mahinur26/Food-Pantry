@@ -47,12 +47,22 @@ app = FastAPI()
 # Allows the frontend(from a different port) to access the backend (which is also in a different port)
 # These requests are usually blocked by browsers for security reasons, but this overrides that
 # This block is in place to prevent other malicious domains from accessing your backend and taking precious data muhhaha
+
+# Handle CORS origins - support both single URL and wildcard
+if FRONTEND_URL and FRONTEND_URL.strip():
+    # Production: allow specific frontend URL
+    allowed_origins = [FRONTEND_URL.strip()]
+else:
+    # Development: allow all origins
+    allowed_origins = ["*"]
+
 app.add_middleware(
    CORSMiddleware,
-   allow_origins=[FRONTEND_URL] if FRONTEND_URL else ["*"],  # Allow all in dev, specific in prod
+   allow_origins=allowed_origins,
    allow_credentials=True,
-   allow_methods=["*"],
+   allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
    allow_headers=["*"],
+   expose_headers=["*"],
 )
 
 
