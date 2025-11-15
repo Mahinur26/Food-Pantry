@@ -20,11 +20,6 @@ function App() {
  const [itemExpiration, setItemExpiration] = useState("");
  const [itemCategory, setItemCategory] = useState(""); // Optional category override
 
-
- // Notification state (for expiration warnings)
- const [notification, setNotification] = useState(""); // The message to show
- const [open, setOpen] = useState(false); // Whether the notification is visible
-
  // Alert state (for general notifications)
  const [alertState, setAlertState] = useState({
    open: false,
@@ -142,12 +137,12 @@ function App() {
 
 
    if (expiringSoon.length > 0) {
-     setNotification(
-       `⚠️ Heads up! These items are expiring soon: ${expiringSoon
+     showAlert(
+       `Heads up! These items are expiring soon: ${expiringSoon
          .map((i) => i.name)
-         .join(", ")}`
+         .join(", ")}`,
+       "warning"
      );
-     setOpen(true);
    }
  }, [inventory]);
 
@@ -639,22 +634,6 @@ return (
               Recipe Chat
             </button>
           </div>
-
-          {/* Notification (Expiration Warnings) */}
-          <Snackbar
-            open={open}
-            autoHideDuration={6000}
-            onClose={() => setOpen(false)}
-            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-          >
-            <Alert
-              onClose={() => setOpen(false)}
-              severity="warning"
-              sx={{ width: '100%', fontSize: 18, color: 'red', backgroundColor: '#FAFAD2', border: '2px solid #FFA500' }}
-            >
-              {notification}
-            </Alert>
-          </Snackbar>
 
           {/* Inventory Tab */}
           {activeTab === 'inventory' && (
