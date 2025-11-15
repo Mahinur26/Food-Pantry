@@ -190,6 +190,21 @@ function App() {
    setLoading(false);
  };
 
+ // Helper function to get expiration color based on days remaining
+ const getExpirationColor = (expirationDate) => {
+   if (!expirationDate) return "text-gray-600";
+   
+   const today = new Date();
+   const expDate = new Date(expirationDate);
+   const diffDays = Math.ceil((expDate - today) / (1000 * 60 * 60 * 24));
+   
+   if (diffDays <= 3 && diffDays >= 0) {
+     return "text-red-600 font-semibold"; // Expires in 3 days or less
+   } else if (diffDays >= 4 && diffDays <= 7) {
+     return "text-yellow-600 font-semibold"; // Expires in 4-7 days
+   }
+   return "text-gray-600"; // More than 7 days or already expired
+ };
 
  // Group inventory items by category
  const groupInventoryByCategory = (items) => {
@@ -660,7 +675,7 @@ return (
                                   Qty: {item.quantity}
                                 </div>
                                 {item.expiration_date && (
-                                  <div className="text-sm text-gray-600">
+                                  <div className={`text-sm ${getExpirationColor(item.expiration_date)}`}>
                                     Expires:{" "}
                                     {new Date(
                                       item.expiration_date
