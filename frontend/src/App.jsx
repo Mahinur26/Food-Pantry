@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Snackbar, Alert } from "@mui/material";
+import { Snackbar, Alert, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography } from "@mui/material";
 
 //Chaged the api url to accept both the local host and deployed url
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
@@ -30,6 +30,13 @@ function App() {
    open: false,
    message: '',
    severity: 'info' // 'error' | 'warning' | 'info' | 'success'
+ });
+
+ // Delete confirmation dialog state
+ const [deleteDialog, setDeleteDialog] = useState({
+   open: false,
+   itemId: null,
+   itemName: ''
  });
 
  const [chatMessages, setChatMessages] = useState([]);
@@ -177,9 +184,20 @@ function App() {
  };
 
 
+ //Opens the delete confirmation dialog
+ const openDeleteDialog = (itemId, itemName) => {
+   setDeleteDialog({ open: true, itemId, itemName });
+ };
+
+ //Closes the delete confirmation dialog
+ const closeDeleteDialog = () => {
+   setDeleteDialog({ open: false, itemId: null, itemName: '' });
+ };
+
  //Deletes an item from the inventory by sending a POST request to the backend and updating the UI
- const deleteItem = async (itemId) => {
-   if (!confirm("Are you sure you want to delete this item?")) return;
+ const confirmDelete = async () => {
+   const itemId = deleteDialog.itemId;
+   closeDeleteDialog();
    setLoading(true);
    try {
      await fetch(`${API_URL}/inventory/delete`, {
@@ -492,6 +510,59 @@ return (
       </Alert>
     </Snackbar>
 
+    {/* Delete Confirmation Dialog */}
+    <Dialog
+      open={deleteDialog.open}
+      onClose={closeDeleteDialog}
+      PaperProps={{
+        sx: {
+          borderRadius: '20px',
+          padding: '12px',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)'
+        }
+      }}
+    >
+      <DialogTitle sx={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#15803d' }}>
+        Delete Item
+      </DialogTitle>
+
+      <DialogContent>
+        <Typography sx={{ fontSize: '1rem', color: '#4b5563' }}>
+          Are you sure you want to delete <strong>{deleteDialog.itemName}</strong>? This action cannot be undone.
+        </Typography>
+      </DialogContent>
+
+      <DialogActions sx={{ padding: '16px 24px' }}>
+        <Button 
+          onClick={closeDeleteDialog} 
+          sx={{ 
+            color: '#6b7280',
+            fontWeight: 600,
+            textTransform: 'none',
+            fontSize: '1rem',
+            '&:hover': { backgroundColor: '#f3f4f6' }
+          }}
+        >
+          Cancel
+        </Button>
+        <Button 
+          onClick={confirmDelete} 
+          variant="contained"
+          sx={{ 
+            backgroundColor: '#dc2626',
+            fontWeight: 600,
+            textTransform: 'none',
+            fontSize: '1rem',
+            borderRadius: '12px',
+            paddingX: '24px',
+            '&:hover': { backgroundColor: '#b91c1c' }
+          }}
+        >
+          Delete
+        </Button>
+      </DialogActions>
+    </Dialog>
+
     {!user ? (
       <div className="min-h-screen bg-green-50 flex items-center justify-center p-6">
         <div className="bg-white rounded-2xl shadow-2xl p-10 w-full max-w-md">
@@ -773,7 +844,7 @@ return (
                                   <option value="Other">Other</option>
                                 </select>
                                 <button
-                                  onClick={() => deleteItem(item.id)}
+                                  onClick={() => openDeleteDialog(item.id, item.name)}
                                   disabled={loading}
                                   className="ml-2 p-2 hover:bg-red-100 rounded-xl transition-colors disabled:opacity-50"
                                   title="Delete item"
