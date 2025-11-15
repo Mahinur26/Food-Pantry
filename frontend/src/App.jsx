@@ -248,6 +248,39 @@ function App() {
    return sorted;
  };
 
+ // Parse recipe response into structured sections
+ const parseRecipeResponse = (text) => {
+   const sections = {
+     dishName: '',
+     ingredients: [],
+     instructions: [],
+     rawText: text
+   };
+   
+   // Extract dish name
+   const dishMatch = text.match(/DISH NAME:\s*(.+?)(?=\n|INGREDIENTS:|$)/i);
+   if (dishMatch) sections.dishName = dishMatch[1].trim();
+   
+   // Extract ingredients
+   const ingredientsMatch = text.match(/INGREDIENTS:\s*([\s\S]+?)(?=INSTRUCTIONS:|$)/i);
+   if (ingredientsMatch) {
+     sections.ingredients = ingredientsMatch[1]
+       .split('\n')
+       .filter(line => line.trim().startsWith('-'))
+       .map(line => line.trim().substring(1).trim());
+   }
+   
+   // Extract instructions
+   const instructionsMatch = text.match(/INSTRUCTIONS:\s*([\s\S]+?)$/i);
+   if (instructionsMatch) {
+     sections.instructions = instructionsMatch[1]
+       .split('\n')
+       .filter(line => /^\d+\./.test(line.trim()))
+       .map(line => line.trim());
+   }
+   
+   return sections;
+ };
 
  //Used to send the user's message to the ai model in the backend and return the response in the chat UI
  const sendMessage = async () => {
@@ -744,10 +777,57 @@ return (
             ) : (
               chatMessages.map((msg, i) => (
                 <div key={i} className={`${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
-                  <div className={`inline-block p-3 rounded-xl max-w-xs ${
-                    msg.role === 'user' ? 'bg-green-600 text-white' : 'bg-gray-200'
+                  <div className={`inline-block p-4 rounded-xl ${
+                    msg.role === 'user' ? 'bg-green-600 text-white max-w-xs' : 'bg-gray-200 max-w-2xl'
                   }`}>
-                    {msg.content}
+                    {msg.role === 'assistant' ? (
+                      (() => {
+                        const recipe = parseRecipeResponse(msg.content);
+                        // If we found structured sections, render them nicely
+                        if (recipe.dishName || recipe.ingredients.length > 0 || recipe.instructions.length > 0) {
+                          return (
+                            <div className="text-gray-800">
+                              {recipe.dishName && (
+                                <h3 className="font-bold text-lg mb-3 text-green-700">{recipe.dishName}</h3>
+                              )}
+                              {recipe.ingredients.length > 0 && (
+                                <div className="mb-4">
+                                  <h4 className="font-semibold mb-2 text-gray-700">Ingredients:</h4>
+                                  <ul className="space-y-1">
+                                    {recipe.ingredients.map((ing, idx) => (
+                                      <li key={idx} className="text-sm flex items-start">
+                                        <span className="text-green-600 mr-2">•</span>
+                                        <span>{ing}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              {recipe.instructions.length > 0 && (
+                                <div>
+                                  <h4 className="font-semibold mb-2 text-gray-700">Instructions:</h4>
+                                  <ol className="space-y-2">
+                                    {recipe.instructions.map((step, idx) => (
+                                      <li key={idx} className="text-sm flex items-start">
+                                        <span className="font-semibold text-green-600 mr-2 min-w-[1.5rem]">
+                                          {idx + 1}.
+                                        </span>
+                                        <span>{step.replace(/^\d+\.\s*/, '')}</span>
+                                      </li>
+                                    ))}
+                                  </ol>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        } else {
+                          // Fallback to plain text if no structure found
+                          return <div className="text-sm whitespace-pre-wrap">{msg.content}</div>;
+                        }
+                      })()
+                    ) : (
+                      msg.content
+                    )}
                   </div>
                 </div>
               ))

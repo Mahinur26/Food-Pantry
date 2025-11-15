@@ -639,19 +639,35 @@ async def chat(req: ChatRequest):
         #This variable is used in the f-string for the prompt to Vertex AI
         inventory_text = "\n".join(inventory) if inventory else "No items in inventory"
         #We will be prompting Vertex AI with this prompt to get recipe suggestions based on the user's inventory
-        prompt = f"""You are a helpful cooking assistant. 
-        Do NOT use markdown, asterisks, or special symbols. Make your answers easy to read and chat-friendly.
-        Write steps clearly, using numbered sentences or paragraphs. Each step should start on a new line with its number.
-        Leave whitespace between paragraphs for readability.
-        
+        prompt = f"""You are a helpful cooking assistant.
+
 Current inventory:
 {inventory_text}
 
-
 User question: {req.message}
 
+IMPORTANT: Format your response EXACTLY like this structure:
 
-Provide helpful recipe suggestions based on their available ingredients. Prioritize items that are expiring soon."""
+DISH NAME: [Name of the recipe]
+
+INGREDIENTS:
+- [ingredient 1 with amount]
+- [ingredient 2 with amount]
+- [ingredient 3 with amount]
+
+INSTRUCTIONS:
+1. [First step]
+2. [Second step]
+3. [Third step]
+
+Rules:
+- Use "DISH NAME:", "INGREDIENTS:", and "INSTRUCTIONS:" as section headers
+- Use simple dashes (-) for each ingredient with amounts
+- Use numbers (1., 2., 3.) for each instruction step
+- Put a blank line between each section
+- Keep instructions clear and concise
+- Prioritize items that are expiring soon
+- If the user asks a general question, still try to suggest a recipe in this format"""
 
         # Call Vertex AI with error handling
         # The prompt is sent to Vertex AI and the response is stored in response
