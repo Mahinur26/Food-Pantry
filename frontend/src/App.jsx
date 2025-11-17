@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Snackbar, Alert } from "@mui/material";
+import { Snackbar, Alert, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography } from "@mui/material";
 
 //Chaged the api url to accept both the local host and deployed url
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
@@ -20,11 +20,19 @@ function App() {
  const [itemExpiration, setItemExpiration] = useState("");
  const [itemCategory, setItemCategory] = useState(""); // Optional category override
 
+ // Alert state (for general notifications)
+ const [alertState, setAlertState] = useState({
+   open: false,
+   message: '',
+   severity: 'info' // 'error' | 'warning' | 'info' | 'success'
+ });
 
- // Notification state
- const [notification, setNotification] = useState(""); // The message to show
- const [open, setOpen] = useState(false); // Whether the notification is visible
-
+ // Delete confirmation dialog state
+ const [deleteDialog, setDeleteDialog] = useState({
+   open: false,
+   itemId: null,
+   itemName: ''
+ });
 
  const [chatMessages, setChatMessages] = useState([]);
  const [chatInput, setChatInput] = useState("");
@@ -63,6 +71,16 @@ function App() {
    };
  }, [imagePreview]);
 
+ // Helper function to show alerts
+ const showAlert = (message, severity = 'info') => {
+   setAlertState({ open: true, message, severity });
+ };
+
+ // Helper function to close alerts
+ const handleAlertClose = (event, reason) => {
+   if (reason === 'clickaway') return;
+   setAlertState({ ...alertState, open: false });
+ };
 
  //Sends a POST request to the backend to either log in or sign up the user based on the isLogin state
  //A POST request means sending data from the frontend to the backend for processing, in this case for logging/signing in
@@ -82,11 +100,12 @@ function App() {
      if (res.ok) {
        setUser(data.user);
        localStorage.setItem("bullavor_user", JSON.stringify(data.user));
+       showAlert(isLogin ? 'Welcome back!' : 'Account created successfully!', 'success');
      } else {
-       alert(data.detail);
+       showAlert(data.detail || 'Authentication failed', 'error');
      }
    } catch (err) {
-     alert("Error: " + err.message);
+     showAlert('Error: ' + err.message, 'error');
    }
    setLoading(false);
  };
@@ -118,19 +137,22 @@ function App() {
 
 
    if (expiringSoon.length > 0) {
-     setNotification(
-       `⚠️ Heads up! These items are expiring soon: ${expiringSoon
+     showAlert(
+       `Heads up! These items are expiring soon: ${expiringSoon
          .map((i) => i.name)
-         .join(", ")}`
+         .join(", ")}`,
+       "warning"
      );
-     setOpen(true);
    }
  }, [inventory]);
 
 
  //Sends the new item data to the backend, then refreshes the inventory list to show the new item
  const addItem = async () => {
-   if (!itemName || !itemQuantity) return alert("Name and quantity required");
+   if (!itemName || !itemQuantity) {
+     showAlert("Name and quantity required", "warning");
+     return;
+   }
    setLoading(true);
    try {
      await fetch(`${API_URL}/inventory`, {
@@ -148,17 +170,29 @@ function App() {
      setItemQuantity("");
      setItemExpiration("");
      setItemCategory("");
-     fetchInventory();
+     await fetchInventory();
+     showAlert("Item added successfully!", "success");
    } catch (err) {
-     alert("Error adding item");
+     showAlert("Error adding item", "error");
    }
    setLoading(false);
  };
 
 
+ //Opens the delete confirmation dialog
+ const openDeleteDialog = (itemId, itemName) => {
+   setDeleteDialog({ open: true, itemId, itemName });
+ };
+
+ //Closes the delete confirmation dialog
+ const closeDeleteDialog = () => {
+   setDeleteDialog({ open: false, itemId: null, itemName: '' });
+ };
+
  //Deletes an item from the inventory by sending a POST request to the backend and updating the UI
- const deleteItem = async (itemId) => {
-   if (!confirm("Are you sure you want to delete this item?")) return;
+ const confirmDelete = async () => {
+   const itemId = deleteDialog.itemId;
+   closeDeleteDialog();
    setLoading(true);
    try {
      await fetch(`${API_URL}/inventory/delete`, {
@@ -166,9 +200,10 @@ function App() {
        headers: { "Content-Type": "application/json" },
        body: JSON.stringify({ item_id: itemId }),
      });
-     fetchInventory(); // Refresh the inventory list
+     await fetchInventory(); // Refresh the inventory list
+     showAlert("Item deleted successfully", "success");
    } catch (err) {
-     alert("Error deleting item");
+     showAlert("Error deleting item", "error");
    }
    setLoading(false);
  };
@@ -183,13 +218,29 @@ function App() {
        headers: { "Content-Type": "application/json" },
        body: JSON.stringify({ category: newCategory }),
      });
-     fetchInventory(); // Refresh the inventory list
+     await fetchInventory(); // Refresh the inventory list
+     showAlert("Category updated successfully", "success");
    } catch (err) {
-     alert("Error updating category");
+     showAlert("Error updating category", "error");
    }
    setLoading(false);
  };
 
+ // Helper function to get expiration color based on days remaining
+ const getExpirationColor = (expirationDate) => {
+   if (!expirationDate) return "text-gray-600";
+   
+   const today = new Date();
+   const expDate = new Date(expirationDate);
+   const diffDays = Math.ceil((expDate - today) / (1000 * 60 * 60 * 24));
+   
+   if (diffDays <= 3 && diffDays >= 0) {
+     return "text-red-600 font-semibold"; // Expires in 3 days or less
+   } else if (diffDays >= 4 && diffDays <= 7) {
+     return "text-yellow-600 font-semibold"; // Expires in 4-7 days
+   }
+   return "text-gray-600"; // More than 7 days or already expired
+ };
 
  // Group inventory items by category
  const groupInventoryByCategory = (items) => {
@@ -233,6 +284,39 @@ function App() {
    return sorted;
  };
 
+ // Parse recipe response into structured sections
+ const parseRecipeResponse = (text) => {
+   const sections = {
+     dishName: '',
+     ingredients: [],
+     instructions: [],
+     rawText: text
+   };
+   
+   // Extract dish name
+   const dishMatch = text.match(/DISH NAME:\s*(.+?)(?=\n|INGREDIENTS:|$)/i);
+   if (dishMatch) sections.dishName = dishMatch[1].trim();
+   
+   // Extract ingredients
+   const ingredientsMatch = text.match(/INGREDIENTS:\s*([\s\S]+?)(?=INSTRUCTIONS:|$)/i);
+   if (ingredientsMatch) {
+     sections.ingredients = ingredientsMatch[1]
+       .split('\n')
+       .filter(line => line.trim().startsWith('-'))
+       .map(line => line.trim().substring(1).trim());
+   }
+   
+   // Extract instructions
+   const instructionsMatch = text.match(/INSTRUCTIONS:\s*([\s\S]+?)$/i);
+   if (instructionsMatch) {
+     sections.instructions = instructionsMatch[1]
+       .split('\n')
+       .filter(line => /^\d+\./.test(line.trim()))
+       .map(line => line.trim());
+   }
+   
+   return sections;
+ };
 
  //Used to send the user's message to the ai model in the backend and return the response in the chat UI
  const sendMessage = async () => {
@@ -261,6 +345,7 @@ function App() {
        ...prev,
        { role: "assistant", content: "Error occurred" },
      ]);
+     showAlert("Chat error occurred", "error");
    }
    setLoading(false);
  };
@@ -310,7 +395,7 @@ function App() {
        confidence: data.confidence,
      });
    } catch (err) {
-     alert("Error classifying image: " + err.message);
+     showAlert("Error classifying image: " + err.message, "error");
      setPredictedItem(null);
    }
    setScanning(false);
@@ -320,11 +405,11 @@ function App() {
  //Add item to inventory from scanned image
  const addItemFromScan = async () => {
    if (!selectedImage || !predictedItem) {
-     alert("Please select and classify an image first");
+     showAlert("Please select and classify an image first", "warning");
      return;
    }
    if (!scanQuantity || parseInt(scanQuantity) < 1) {
-     alert("Please enter a valid quantity (at least 1)");
+     showAlert("Please enter a valid quantity (at least 1)", "warning");
      return;
    }
 
@@ -374,11 +459,12 @@ function App() {
      await fetchInventory();
 
 
-     alert(
-       `Item added successfully! Added ${responseData.item_name} to inventory.`
+     showAlert(
+       `Added ${responseData.item_name} to inventory!`,
+       "success"
      );
    } catch (err) {
-     alert("Error adding item: " + err.message);
+     showAlert("Error adding item: " + err.message, "error");
    }
    setLoading(false);
  };
@@ -400,105 +486,157 @@ function App() {
     setScanExpiration('');
   };
 //The main return statement that renders the UI based on whether the user is logged in or not
-if (!user) {
-  return (
-    <div className="min-h-screen bg-green-50 flex items-center justify-center p-6">
-      <div className="bg-white rounded-2xl shadow-2xl p-10 w-full max-w-md">
-        <h1 className="text-4xl font-extrabold text-green-700 mb-8 text-center">Food Pantry</h1>
-        <div className="space-y-5">
-          <input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleAuth()}
-            className="w-full px-5 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500"
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleAuth()}
-            className="w-full px-5 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500"
-          />
-          <button
-            onClick={handleAuth}
-            disabled={loading}
-            className="w-full bg-green-600 text-white py-3 rounded-xl hover:bg-green-700 transition font-semibold disabled:opacity-50"
-          >
-            {loading ? 'Loading...' : (isLogin ? 'Login' : 'Sign Up')}
-          </button>
-        </div>
-        <p className="text-center mt-6">
-          <button
-            onClick={() => setIsLogin(!isLogin)}
-            className="text-green-600 hover:underline font-medium"
-          >
-            {isLogin ? 'Need an account? Sign up' : 'Have an account? Login'}
-          </button>
-        </p>
-      </div>
-    </div>
-  );
-}
-
 return (
-  <div className="min-h-screen bg-green-50">
-    {/* Header */}
-    <header className="bg-white shadow-md">
-      <div className="max-w-6xl mx-auto px-6 py-5 flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-green-700">Food Pantry</h1>
-        <div className="flex gap-6 items-center">
-          <span className="text-sm text-gray-600 font-medium">{user.email}</span>
-          <button
-            onClick={() => {
-              setUser(null);
-              localStorage.removeItem('bullavor_user');
-            }}
-            className="text-sm text-red-600 hover:underline font-medium"
-          >
-            Logout
-          </button>
+  <>
+    {/* Unified Alert System - Always rendered */}
+    <Snackbar
+      open={alertState.open}
+      autoHideDuration={6000}
+      onClose={handleAlertClose}
+      anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+    >
+      <Alert
+        onClose={handleAlertClose}
+        severity={alertState.severity}
+        variant="filled"
+        sx={{ width: '100%' }}
+      >
+        {alertState.message}
+      </Alert>
+    </Snackbar>
+
+    {/* Delete Confirmation Dialog */}
+    <Dialog
+      open={deleteDialog.open}
+      onClose={closeDeleteDialog}
+      PaperProps={{
+        sx: {
+          borderRadius: '20px',
+          padding: '12px',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)'
+        }
+      }}
+    >
+      <DialogTitle sx={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#15803d' }}>
+        Delete Item
+      </DialogTitle>
+
+      <DialogContent>
+        <Typography sx={{ fontSize: '1rem', color: '#4b5563' }}>
+          Are you sure you want to delete <strong>{deleteDialog.itemName}</strong>? This action cannot be undone.
+        </Typography>
+      </DialogContent>
+
+      <DialogActions sx={{ padding: '16px 24px' }}>
+        <Button 
+          onClick={closeDeleteDialog} 
+          sx={{ 
+            color: '#6b7280',
+            fontWeight: 600,
+            textTransform: 'none',
+            fontSize: '1rem',
+            '&:hover': { backgroundColor: '#f3f4f6' }
+          }}
+        >
+          Cancel
+        </Button>
+        <Button 
+          onClick={confirmDelete} 
+          variant="contained"
+          sx={{ 
+            backgroundColor: '#dc2626',
+            fontWeight: 600,
+            textTransform: 'none',
+            fontSize: '1rem',
+            borderRadius: '12px',
+            paddingX: '24px',
+            '&:hover': { backgroundColor: '#b91c1c' }
+          }}
+        >
+          Delete
+        </Button>
+      </DialogActions>
+    </Dialog>
+
+    {!user ? (
+      <div className="min-h-screen bg-green-50 flex items-center justify-center p-6">
+        <div className="bg-white rounded-2xl shadow-2xl p-10 w-full max-w-md">
+          <h1 className="text-4xl font-extrabold text-green-700 mb-8 text-center">Food Pantry</h1>
+          <div className="space-y-5">
+            <input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleAuth()}
+              className="w-full px-5 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleAuth()}
+              className="w-full px-5 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+            <button
+              onClick={handleAuth}
+              disabled={loading}
+              className="w-full bg-green-600 text-white py-3 rounded-xl hover:bg-green-700 transition font-semibold disabled:opacity-50"
+            >
+              {loading ? 'Loading...' : (isLogin ? 'Login' : 'Sign Up')}
+            </button>
+          </div>
+          <p className="text-center mt-6">
+            <button
+              onClick={() => setIsLogin(!isLogin)}
+              className="text-green-600 hover:underline font-medium"
+            >
+              {isLogin ? 'Need an account? Sign up' : 'Have an account? Login'}
+            </button>
+          </p>
         </div>
       </div>
-    </header>
+    ) : (
+      <div className="min-h-screen bg-green-50">
+        {/* Header */}
+        <header className="bg-white shadow-md">
+          <div className="max-w-6xl mx-auto px-6 py-5 flex justify-between items-center">
+            <h1 className="text-3xl font-bold text-green-700">Food Pantry</h1>
+            <div className="flex gap-6 items-center">
+              <span className="text-sm text-gray-600 font-medium">{user.email}</span>
+              <button
+                onClick={() => {
+                  setUser(null);
+                  localStorage.removeItem('bullavor_user');
+                }}
+                className="text-sm text-red-600 hover:underline font-medium"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </header>
 
-    <main className="max-w-6xl mx-auto px-6 py-8 space-y-8">
-      {/* Tabs */}
-      <div className="flex gap-3">
-        <button
-          onClick={() => setActiveTab('inventory')}
-          className={`px-6 py-2 rounded-full font-semibold ${activeTab === 'inventory' ? 'bg-green-600 text-white shadow-lg' : 'bg-white border hover:bg-green-50'}`}
-        >
-          Inventory
-        </button>
-        <button
-          onClick={() => setActiveTab('chat')}
-          className={`px-6 py-2 rounded-full font-semibold ${activeTab === 'chat' ? 'bg-green-600 text-white shadow-lg' : 'bg-white border hover:bg-green-50'}`}
-        >
-          Recipe Chat
-        </button>
-      </div>
+        <main className="max-w-6xl mx-auto px-6 py-8 space-y-8">
+          {/* Tabs */}
+          <div className="flex gap-3">
+            <button
+              onClick={() => setActiveTab('inventory')}
+              className={`px-6 py-2 rounded-full font-semibold ${activeTab === 'inventory' ? 'bg-green-600 text-white shadow-lg' : 'bg-white border hover:bg-green-50'}`}
+            >
+              Inventory
+            </button>
+            <button
+              onClick={() => setActiveTab('chat')}
+              className={`px-6 py-2 rounded-full font-semibold ${activeTab === 'chat' ? 'bg-green-600 text-white shadow-lg' : 'bg-white border hover:bg-green-50'}`}
+            >
+              Recipe Chat
+            </button>
+          </div>
 
-      {/* Notification */}
-      <Snackbar
-        open={open}
-        autoHideDuration={6000}
-        onClose={() => setOpen(false)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-      >
-        <Alert
-          onClose={() => setOpen(false)}
-          severity="warning"
-          sx={{ width: '100%', fontSize: 18, color: 'red', backgroundColor: '#FAFAD2', border: '2px solid #FFA500' }}
-        >
-          {notification}
-        </Alert>
-      </Snackbar>
-
-      {/* Inventory Tab */}
-      {activeTab === 'inventory' && (
+          {/* Inventory Tab */}
+          {activeTab === 'inventory' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Add / Scan Item */}
           <div className="space-y-6">
@@ -660,7 +798,7 @@ return (
                                   Qty: {item.quantity}
                                 </div>
                                 {item.expiration_date && (
-                                  <div className="text-sm text-gray-600">
+                                  <div className={`text-sm ${getExpirationColor(item.expiration_date)}`}>
                                     Expires:{" "}
                                     {new Date(
                                       item.expiration_date
@@ -685,7 +823,7 @@ return (
                                   <option value="Other">Other</option>
                                 </select>
                                 <button
-                                  onClick={() => deleteItem(item.id)}
+                                  onClick={() => openDeleteDialog(item.id, item.name)}
                                   disabled={loading}
                                   className="ml-2 p-2 hover:bg-red-100 rounded-xl transition-colors disabled:opacity-50"
                                   title="Delete item"
@@ -729,10 +867,57 @@ return (
             ) : (
               chatMessages.map((msg, i) => (
                 <div key={i} className={`${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
-                  <div className={`inline-block p-3 rounded-xl max-w-xs ${
-                    msg.role === 'user' ? 'bg-green-600 text-white' : 'bg-gray-200'
+                  <div className={`inline-block p-4 rounded-xl ${
+                    msg.role === 'user' ? 'bg-green-600 text-white max-w-xs' : 'bg-gray-200 max-w-2xl'
                   }`}>
-                    {msg.content}
+                    {msg.role === 'assistant' ? (
+                      (() => {
+                        const recipe = parseRecipeResponse(msg.content);
+                        // If we found structured sections, render them nicely
+                        if (recipe.dishName || recipe.ingredients.length > 0 || recipe.instructions.length > 0) {
+                          return (
+                            <div className="text-gray-800">
+                              {recipe.dishName && (
+                                <h3 className="font-bold text-lg mb-3 text-green-700">{recipe.dishName}</h3>
+                              )}
+                              {recipe.ingredients.length > 0 && (
+                                <div className="mb-4">
+                                  <h4 className="font-semibold mb-2 text-gray-700">Ingredients:</h4>
+                                  <ul className="space-y-1">
+                                    {recipe.ingredients.map((ing, idx) => (
+                                      <li key={idx} className="text-sm flex items-start">
+                                        <span className="text-green-600 mr-2">•</span>
+                                        <span>{ing}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              {recipe.instructions.length > 0 && (
+                                <div>
+                                  <h4 className="font-semibold mb-2 text-gray-700">Instructions:</h4>
+                                  <ol className="space-y-2">
+                                    {recipe.instructions.map((step, idx) => (
+                                      <li key={idx} className="text-sm flex items-start">
+                                        <span className="font-semibold text-green-600 mr-2 min-w-[1.5rem]">
+                                          {idx + 1}.
+                                        </span>
+                                        <span>{step.replace(/^\d+\.\s*/, '')}</span>
+                                      </li>
+                                    ))}
+                                  </ol>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        } else {
+                          // Fallback to plain text if no structure found
+                          return <div className="text-sm whitespace-pre-wrap">{msg.content}</div>;
+                        }
+                      })()
+                    ) : (
+                      msg.content
+                    )}
                   </div>
                 </div>
               ))
@@ -757,9 +942,11 @@ return (
             </button>
           </div>
         </div>
-      )}
-    </main>
-  </div>
+          )}
+        </main>
+      </div>
+    )}
+  </>
 );
 }
 
