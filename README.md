@@ -4,6 +4,10 @@ An AI-powered food pantry management application that helps you track your groce
 
 ## Features
 
+
+Uploading Video of using the image recognition model.mp4…
+
+
 ### 🔐 User Authentication
 Secure login and signup system powered by Firebase Authentication.
 
@@ -24,7 +28,11 @@ Secure login and signup system powered by Firebase Authentication.
 ### 📸 Image Recognition
 Use your device camera or upload photos to automatically identify grocery items. Powered by a fine-tuned YOLO model that recognizes 36 different fruits and vegetables.
 
-![Image Recognition Demo](./Video%20of%20using%20the%20image%20recognition%20model.mp4)
+<div align="center">
+
+https://github.com/user-attachments/assets/8795c2f2-36ff-4c0f-b087-c9898156a41b
+
+</div>
 
 ### 🤖 AI Recipe Assistant
 Chat with an AI powered by Google's Gemini model to get personalized recipe suggestions based on your current inventory. Get creative meal ideas that help reduce food waste.
