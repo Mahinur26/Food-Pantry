@@ -1,6 +1,6 @@
 # Food Pantry
 
-An AI-powered food pantry management application that helps you track your groceries, monitor expiration dates, and get recipe suggestions based on your inventory. Features intelligent image recognition to automatically identify and catalog food items using your device camera.
+An AI-driven food pantry management app that lets you organize groceries, keep track of expiration dates, and receive recipe recommendations based on what you have on hand. It uses smart image recognition to automatically detect and catalog food items through your device’s camera.
 
 ## Features
 
